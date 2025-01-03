@@ -36,6 +36,7 @@ class cpu (pyglet.window.Window):
     v = [0]*16 # max 16 bits
     display_buffer = [0]*32*64 # 64*32 display size
     stack = []
+    key_inputs = [0]*16
     opcode = 0
     index = 0
     pc = 0
@@ -151,11 +152,11 @@ class cpu (pyglet.window.Window):
     def cycle(self):
         self.opcode = (self.memory[self.pc] << 8) | self.memory[self.pc + 1] # takes the first byte at pc, pushes it left by 8 bits to make space for the next byte and use the bitwise OR operator to add it to the first byte to get the opcode
         
-        #TODO: Process the opcode
+        #Process the opcode
         self.first_nibble = self.opcode & 0xf000 # extracts the first nibble
         self.x = (self.opcode & 0x0f00) >> 8 # extracts the second nibble 
         self.y = (self.opcode & 0x00f0) >> 4 # extracts the third nibble
-        self.n = self.opcode & 0x000f # extracts the last nibble
+        self.n = self.opcode & 0x000f # extracts the fourth nibble
         self.nn = self.opcode & 0x00ff # extracts the last byte
         self.nnn = self.opcode & 0x0fff # extracts the last 12 bits
         
@@ -164,24 +165,115 @@ class cpu (pyglet.window.Window):
         #Opcode decoding if-else statements
         if (self.first_nibble == 0x0000):
             if (self.opcode == 0x00e0):
-                log("Clear Screen")
+                log("Clears Screen")
                 self.display_buffer = [0] * 64 * 32 # resets the display buffer
                 self.should_draw = True
             elif (self.opcode == 0x00ee):
-                log("Return")
+                log("Returns from subroutine")
                 self.pc = self.stack.pop()
         
         elif (self.first_nibble == 0x1000):
+            log("Jumps to address NNN")
             self.pc = self.nnn
             
+        elif (self.first_nibble == 0x2000):
+            log("Calls subroutine at NNN")
+            self.stack.append(self.pc)
+            self.pc = self.nnn
+            
+        elif (self.first_nibble == 0x3000):
+            log("Skips the next instruction if VX equals NN")
+            if (self.v[self.x] == self.nn):
+                self.pc += 2
+        
+        elif (self.first_nibble == 0x4000):
+            log("Skips the next instruction if VX does not equals NN")
+            if (self.v[self.x] != self.nn):
+                self.pc += 2
+        
+        elif (self.first_nibble == 0x5000):
+            log("Skips the next instruction if VX equals VY")
+            if (self.v[self.x] == self.v[self.y]):
+                self.pc += 2
+            
         elif (self.first_nibble == 0x6000):
+            log("Sets VX to NN")
             self.v[self.x] = self.nn
         
         elif (self.first_nibble == 0x7000):
+            log("Adds NN to VX")
             self.v[self.x] += self.nn
+            
+        elif (self.first_nibble == 0x8000):
+            if (self.n == 0x0):
+                log("Sets VX to the value of VY")
+                self.v[self.x] = self.v[self.y]
+            
+            elif (self.n == 0x1):
+                log("Sets VX to VX or VY")
+                self.v[self.x] |= self.v[self.y]
+                
+            elif (self.n == 0x2):
+                log("Sets VX to VX and VY")
+                self.v[self.x] &= self.v[self.y]
+                
+            elif (self.n == 0x3):
+                log("Sets VX to VX XOR VY")
+                self.v[self.x] ^= self.v[self.y]
+                
+            elif (self.n == 0x4):
+                log("Sets VX = VX + VY")
+                if (self.v[self.x] + self.v[self.y] > 0xff): # Checking whether the sum is greater than 1 byte or not
+                    self.v[0xf] = 1
+                else:
+                    self.v[0xf] = 0
+                self.v[self.x] += self.v[self.y]
+                self.v[self.x] &= 0xff # Only use the last 8 bits or 1 byte
+            
+            elif (self.n == 0x5):
+                log("Sets VX = VX - VY")
+                if (self.v[self.x] > self.v[self.y]):
+                    self.v[0xf] = 1
+                else:
+                    self.v[0xf] = 0
+                self.v[self.x] -= self.v[self.y]
+                #self.v[self.x] &= 0xff
+                
+            elif (self.n == 0x6):
+                log("Sets VX = VX and shifts it by 1 bit to the right")
+                self.v[0xf] = self.v[self.x] & 0x01 # Storing the least significant bit in VF
+                self.v[self.x] = self.v[self.x] >> 1
+                
+            elif (self.n == 0x7):
+                log("Sets VX = VY - VX")
+                if (self.v[self.y] > self.v[self.x]):
+                    self.v[0xf] = 1
+                else:
+                    self.v[0xf] = 0
+                self.v[self.x] = self.v[self.y] - self.v[self.x]
+            
+            elif (self.n == 0xe):
+                log("Sets VX = VX and shifts it by 1 bit to the left")
+                self.v[0xf] = (self.v[self.x] & 0x80) >> 7 # Storing the most significant bit in VF
+                self.v[self.x] = self.v[self.x] << 1
+                
+            
+        elif (self.first_nibble == 0x9000):
+            log("Skips the next instruction if VX does not equal VY")
+            if (self.v[self.x] != self.v[self.y]):
+                self.pc += 2
             
         elif (self.first_nibble == 0xa000):
             self.index = self.nnn
+            
+        elif (self.first_nibble == 0xb000):
+            log("Jumps to Address NNN plus V0") # Might need to change this to address XNN plus VX
+            self.pc = self.nnn + self.v[0x0]
+            
+        elif (self.first_nibble == 0xc000):
+            log("Generates a random number between 0 and 255, ANDs it with NN and stores it in VX")
+            self.v[self.x] = random.randint(0, 255) & self.nn
+            self.v[self.x] &= 0xff
             
         elif (self.first_nibble == 0xd000):
             log("Draw a sprite")
@@ -207,6 +299,68 @@ class cpu (pyglet.window.Window):
                         self.v[0xf] = 0
                 row += 1
             self.should_draw = True
+        
+        elif (self.first_nibble == 0xe000):
+            if (self.n == 0xe):
+                log("Skips the next instruction if the key stored in VX is pressed.")
+                key = self.v[self.x] & 0xf
+                if (self.key_inputs[key] == 1):
+                    self.pc += 2
+            elif (self.n == 0x1):
+                log("Skips the next instruction if the key stored in VX isn't pressed.")
+                key = self.v[self.x] & 0xf
+                if (self.key_inputs[key] == 0):
+                    self.pc += 2
+                    
+        elif (self.first_nibble == 0xf000):
+            if (self.nn == 0x07):
+                log("Sets VX to the value of the delay timer")
+                self.v[self.x] = self.delay_timer
+            
+            elif (self.nn == 0x0A):
+                log("After a key is pressed, that key is stored in VX")
+                key_pressed = self.get_key()
+                if (key_pressed >= 0):
+                    self.v[self.x] = key
+                else:
+                    self.pc -= 2
+            
+            elif (self.nn == 0x15):
+                log("Sets the value of the delay timer to VX")
+                self.delay_timer = self.v[self.x]
+                
+            elif (self.nn == 0x18):
+                log("Sets the value of the sound timer to VX")
+                self.sound_timer = self.v[self.x]
+                
+            elif (self.nn == 0x1e):
+                log("Adds VX to I")
+                self.index += self.v[self.x]
+                if (self.index > 0xfff):
+                    self.v[0xf] = 1
+                    self.index &= 0xfff
+                else:
+                    self.v[0xf] = 0
+                    
+            elif (self.nn == 0x29):
+                log("Sets I to point to the character of the hexadecimal in VX")
+                self.index = (5*(self.v[self.x])) & 0xfff
+                
+            elif (self.nn == 0x33):
+                log("Stores BCD representation of Vx in memory locations I, I+1, and I+2")
+                self.memory[self.index] = self.v[self.x] / 100
+                self.memory[self.index+1] = (self.v[self.x] % 100) / 10
+                self.memory[self.index+2] = self.v[self.x] % 10
+                
+            elif (self.nn == 0x55):
+                log("Stores the values of V0 through VX starting at memory location I")
+                for i in range(0, self.x+1):
+                    self.memory[self.index+i] = self.v[i]
+            
+            elif (self.nn == 0x65):
+                log("Reads the values of V0 through VX starting at memory location I")
+                for i in range(0, self.x+1):
+                    self.v[i] = self.memory[self.index+i]
         
         if self.delay_timer > 0:
             self.delay_timer -= 1

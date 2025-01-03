@@ -120,10 +120,18 @@ class cpu (pyglet.window.Window):
     
     def load_rom(self, rom_path):
         log("Loading %s..." % rom_path)
-        binary = open(rom_path, "rb").read()
+        
+        binary = []
+        
+        with open(rom_path, 'rb') as f:
+            program = f.read()
+            
+            for i in program:
+                binary.append(i)
+        
         i = 0
         while i < len(binary):
-            self.memory[i+0x200] = ord(binary[i])
+            self.memory[i+0x200] = binary[i]
             i += 1
             
     def draw(self):
@@ -137,7 +145,6 @@ class cpu (pyglet.window.Window):
                     #draw a pixel
                     self.pixel.blit((i%64)*10, 310-((i/64)*10))
                 i += 1
-            self.batch.draw()
             self.flip() 
             self.should_draw = False
             

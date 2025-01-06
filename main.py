@@ -44,6 +44,7 @@ class cpu (pyglet.window.Window):
     sound_timer = 0
     
     should_draw = False
+    key_wait = False
     
     fonts = [0xF0, 0x90, 0x90, 0x90, 0xF0, # 0
            0x20, 0x60, 0x20, 0x20, 0x70, # 1
@@ -64,6 +65,7 @@ class cpu (pyglet.window.Window):
            ]
     
     pixel = pyglet.resource.image('pixel.png')
+    buzz = pyglet.resource.media('buzz.wav', streaming=False)
     
     first_nibble = 0
     x = 0
@@ -321,7 +323,7 @@ class cpu (pyglet.window.Window):
                 log("After a key is pressed, that key is stored in VX")
                 key_pressed = self.get_key()
                 if (key_pressed >= 0):
-                    self.v[self.x] = key
+                    self.v[self.x] = key_pressed
                 else:
                     self.pc -= 2
             
@@ -344,7 +346,7 @@ class cpu (pyglet.window.Window):
                     
             elif (self.nn == 0x29):
                 log("Sets I to point to the character of the hexadecimal in VX")
-                self.index = (5*(self.v[self.x])) & 0xfff
+                self.index = int(5*(self.v[self.x])) & 0xfff
                 
             elif (self.nn == 0x33):
                 log("Stores BCD representation of Vx in memory locations I, I+1, and I+2")
@@ -366,9 +368,10 @@ class cpu (pyglet.window.Window):
             self.delay_timer -= 1
         if self.sound_timer > 0:
             self.sound_timer -= 1
-        if self.sound_timer == 0:
+        if self.sound_timer != 0:
             # Play a sound here with pyglet
-            return #TODO: Placeholder
+            self.buzz.play()
+            
     
     
     def main(self):
